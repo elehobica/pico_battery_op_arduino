@@ -1,0 +1,59 @@
+#------------------------------------------------------
+# Copyright (c) 2026, Elehobica
+# Released under the BSD-2-Clause
+# refer to https://opensource.org/licenses/BSD-2-Clause
+#------------------------------------------------------
+#
+# Library Manager compliance check and example compilation.
+#
+# arduino-lint runs with the same rule set the Library Manager registry bot applies, so a green
+# run here means the registry pull request should pass. The compile job builds the examples for
+# both boards against the arduino-pico core, which is what catches upstream drift after a
+# "Vendor" run.
+
+name: Lint
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  arduino-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: arduino-lint
+        uses: arduino/arduino-lint-action@v2
+        with:
+          # "submit" is the rule set the registry bot applies to a library that is not in the
+          # index yet, and it is what this repository is until the arduino/library-registry pull
+          # request is merged. CHANGE THIS TO "update" ONCE THE LIBRARY IS REGISTERED: "submit"
+          # then starts failing because the name is (correctly) already in the index.
+          library-manager: submit
+          compliance: strict
+          project-type: library
+
+  compile-examples:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - board: pico
+            fqbn: rp2040:rp2040:rpipico
+          - board: pico2
+            fqbn: rp2040:rp2040:rpipico2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile examples for ${{ matrix.board }}
+        uses: arduino/compile-sketches@v1
+        with:
+          fqbn: ${{ matrix.fqbn }}
+          platforms: |
+            - source-url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+              name: rp2040:rp2040
+          libraries: |
+            - source-path: ./
+          sketch-paths: |
+            - examples
+          enable-warnings-report: true

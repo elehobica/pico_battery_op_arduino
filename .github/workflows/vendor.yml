@@ -1,0 +1,110 @@
+#------------------------------------------------------
+# Copyright (c) 2026, Elehobica
+# Released under the BSD-2-Clause
+# refer to https://opensource.org/licenses/BSD-2-Clause
+#------------------------------------------------------
+#
+# Regenerate src/ from the upstream sources and commit the result.
+#
+# Manually triggered only. The origins that tools/vendor.sh reads from are hardcoded in the
+# script, not taken from the inputs below, so triggering this workflow cannot pull code from
+# anywhere else. Only the upstream ref and the version string are parameterised, and both are
+# validated before use. No cross-repository token is involved: the default GITHUB_TOKEN with
+# write access to this repository is enough.
+
+name: Vendor
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: 'Upstream pico_battery_op ref (branch / tag / commit). Blank = the script default'
+        required: false
+        default: ''
+      version:
+        description: 'New library.properties version, e.g. 0.1.1. Blank = leave unchanged'
+        required: false
+        default: ''
+      create_tag:
+        description: 'Create and push a git tag named after "version" (requires "version")'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM_REF: ${{ inputs.upstream_ref }}
+      NEW_VERSION: ${{ inputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate inputs
+        run: |
+          if [[ -n "${UPSTREAM_REF}" && ! "${UPSTREAM_REF}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "error: invalid upstream_ref: ${UPSTREAM_REF}" >&2
+            exit 1
+          fi
+          if [[ -n "${NEW_VERSION}" && ! "${NEW_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "error: version must be X.Y.Z, got: ${NEW_VERSION}" >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.create_tag }}" == "true" && -z "${NEW_VERSION}" ]]; then
+            echo "error: create_tag requires version" >&2
+            exit 1
+          fi
+
+      - name: Vendor sources
+        env:
+          # only used to resolve the upstream ref to a commit sha for VENDOR_INFO.txt
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./tools/vendor.sh --ref "${UPSTREAM_REF}"
+
+      - name: Update library.properties version
+        if: inputs.version != ''
+        run: |
+          sed -i -E "s|^version=.*|version=${NEW_VERSION}|" library.properties
+          grep '^version=' library.properties
+
+      - name: Commit and push
+        id: commit
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet && git diff --cached --quiet; then
+            echo 'nothing changed'
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git add -A
+          git commit -m "vendor: sync sources${UPSTREAM_REF:+ from ${UPSTREAM_REF}}${NEW_VERSION:+ (version ${NEW_VERSION})}"
+          git push
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Tag
+        if: inputs.create_tag
+        run: |
+          if git rev-parse -q --verify "refs/tags/${NEW_VERSION}" >/dev/null; then
+            echo "error: tag ${NEW_VERSION} already exists" >&2
+            exit 1
+          fi
+          git tag "${NEW_VERSION}"
+          git push origin "${NEW_VERSION}"
+
+      - name: Summary
+        run: |
+          {
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| upstream ref | ${UPSTREAM_REF:-(script default)} |"
+            echo "| committed | ${{ steps.commit.outputs.changed }} |"
+            echo "| version | ${NEW_VERSION:-(unchanged)} |"
+            echo "| tag | ${{ inputs.create_tag && env.NEW_VERSION || '(none)' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo '--- src/pbo_vendor/VENDOR_INFO.txt ---'
+          cat src/pbo_vendor/VENDOR_INFO.txt
