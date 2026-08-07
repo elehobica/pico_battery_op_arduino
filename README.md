@@ -31,6 +31,46 @@ folder.
 
 Then open `File > Examples > pico_battery_op > battery_op_basic`.
 
+## Usage
+
+The API is the same as in the main repository; only the surrounding structure follows Arduino's
+`setup()` / `loop()` convention.
+
+```cpp
+#include "pico_battery_op.h"
+
+void setup()
+{
+    pbo_init(nullptr);   // nullptr -> all defaults
+    pbo_start();
+}
+
+void loop()
+{
+    pbo_process();       // runs the power state machine (may block while dormant)
+    delay(50);
+}
+```
+
+`pbo_process()` must be called periodically from `loop()`. It uses absolute time internally, so the
+exact cadence is not critical, but it is what runs the power state machine and the button gesture
+recognition, and it blocks while the board is dormant (a Sleep, or Charging).
+
+Pass a `pbo_config_t` to `pbo_init()` to override the pin assignments, the deferred-action delays,
+the POWER-gesture mapping or the application callbacks:
+
+```cpp
+pbo_config_t config = pbo_get_default_config();
+config.pin_user_sw = 17;                              // override only what your board needs
+config.callbacks.on_enter_dormant = on_enter_dormant; // quiesce your peripherals before dormant
+pbo_init(&config);
+pbo_start();
+```
+
+See [examples/battery_op_basic](examples/battery_op_basic/battery_op_basic.ino) for a complete
+sketch, and the [main repository README](https://github.com/elehobica/pico_battery_op#api) for the
+full API and the power state model.
+
 ## Coexisting with other sleep / dormant libraries
 
 The pico-extras sleep sources this library needs are vendored under `src/pbo_vendor/`, and every
