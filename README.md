@@ -14,6 +14,11 @@ This repository is **generated**: every file under `src/` is produced by
 
 ## Requirements
 
+- **Raspberry Pi Pico (RP2040) or Pico 2 (RP2350)**. Pico W / Pico 2 W are **not supported**: GP23,
+  GP24 and GP29, which this library uses for the DC/DC PSM control, the USB-power detection and the
+  battery ADC, are taken by the CYW43 wireless chip on those boards. The arduino-pico core exposes
+  every board under the single `rp2040` architecture, so nothing stops the IDE from offering this
+  library on a W board - the incompatibility is in the wiring, not in the build.
 - **[arduino-pico](https://github.com/earlephilhower/arduino-pico) core with Pico SDK 2.3.0** (5.7.0
   or later; developed against 6.0.0). The vendored pico-extras sources are taken from
   pico-extras `sdk-2.3.0`, so the core's bundled SDK should match to avoid API drift.
